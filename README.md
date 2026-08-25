@@ -60,6 +60,14 @@ A complete **Distributed Data Parallel (DDP)** multi-GPU training implementation
 - **Epoch Reshuffling (`sampler.set_epoch`)**: Deterministically seeds random index shuffling across all GPUs per epoch.
 - **Gradient AllReduce (`torch.nn.parallel.DistributedDataParallel`)**: Automatically averages gradients across GPUs over NCCL peer-to-peer ring during `loss.backward()` before `optimizer.step()`.
 
+### 6. [`simple_tokenizer.py`](./simple_tokenizer.py)
+A word and punctuation tokenizer (`SimpleTokenizerV1`) built for Large Language Models (LLMs):
+- **Token Extraction**: Uses regular expressions `re.split(r'([,.?_!"()\']|--|\s)', text)` to split text into words and individual punctuation tokens.
+- **Vocabulary Construction**: Builds a token-level `vocab` dictionary (`token -> integer ID`) from preprocessed text (`the-verdict.txt`).
+- **Encoding & Decoding**:
+  - `encode(text)`: Converts string tokens to integer IDs (`self.str_to_int[token]`).
+  - `decode(ids)`: Converts integer IDs back into readable string text (`self.int_to_str[id]`).
+
 ---
 
 ## 🚀 Execution Commands
@@ -79,4 +87,7 @@ python benchmark_devices.py
 
 # Run Distributed Data Parallel multi-GPU script (requires CUDA GPUs)
 python distributed_data_processing.py
+
+# Run simple LLM word & punctuation tokenizer
+python simple_tokenizer.py
 ```
