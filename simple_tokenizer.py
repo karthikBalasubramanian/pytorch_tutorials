@@ -123,7 +123,17 @@ if __name__ == "__main__":
         "of someunknownPlace."
     )
     
-    # Pass allowed_special={"<|endoftext|>"} to permit encoding the special token
+    # -----------------------------------------------------------------------------
+    # SECURITY FEATURE & SPECIAL TOKEN PROTECTION:
+    # -----------------------------------------------------------------------------
+    # By default, tiktoken raises a ValueError if special control tokens like
+    # `<|endoftext|>` appear in raw input strings. This is a security measure to
+    # prevent "Special Token Injection Attacks" (where untrusted user text might
+    # inject control signals to hijack prompt boundaries or system instructions).
+    #
+    # Passing `allowed_special={"<|endoftext|>"}` explicitly opts-in to parsing
+    # specified special control tokens for trusted internal dataset pipelines.
+    # -----------------------------------------------------------------------------
     integers = tokenizer_bpe.encode(text_bpe, allowed_special={"<|endoftext|>"})
     print("Encoded Token IDs (tiktoken):\n", integers)
     print(f"Max Token ID in gpt2 vocab: {tokenizer_bpe.max_token_value}")
