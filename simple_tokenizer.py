@@ -57,3 +57,13 @@ if __name__ == "__main__":
     
     decoded_text = tokenizer.decode(encoded_ids)
     print("\nDecoded Text:\n", decoded_text)
+
+    # Negative Case: Out-of-Vocabulary (OOV) text containing unseen words
+    unseen_text = "Hello, how are you?"
+    print("\n--- Negative Case: Out-of-Vocabulary (OOV) Text ---")
+    print("Unseen Input Text:", unseen_text)
+    try:
+        tokenizer.encode(unseen_text)
+    except KeyError as e:
+        print(f"KeyError caught: Token {e} is NOT in the vocabulary!")
+        print("--> SimpleTokenizerV1 fails on words that were absent from the training corpus.")
