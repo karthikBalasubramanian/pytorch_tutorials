@@ -23,6 +23,25 @@ class SimpleTokenizerV1:
         return text
 
 
+class SimpleTokenizerV2(SimpleTokenizerV1):
+    """
+    Improved tokenizer that handles out-of-vocabulary (OOV) tokens <|unk|> and adds a special context token for 
+    end of text "<|endoftext|>" to the vocabulary.
+    """
+    def encode(self, text):
+        preprocessed = re.split(r'([,.:;?_!"()\']|--|\s)', text)
+        preprocessed = [
+            item.strip() for item in preprocessed if item.strip()
+        ]
+        preprocessed = [item if item in self.str_to_int
+                        else "<|unk|>" for item in preprocessed]
+
+        ids = [self.str_to_int[s] for s in preprocessed]
+        return ids
+
+
+
+
 if __name__ == "__main__":
     url = (
         "https://raw.githubusercontent.com/rasbt/"
@@ -44,6 +63,7 @@ if __name__ == "__main__":
 
     # Create vocabulary mapping tokens to integer IDs
     vocab = {token: integer for integer, token in enumerate(all_tokens)}
+    print("\n============================================\n")
     print(f"Vocabulary size: {len(vocab)} unique tokens")
 
     # Instantiate tokenizer
@@ -67,3 +87,29 @@ if __name__ == "__main__":
     except KeyError as e:
         print(f"KeyError caught: Token {e} is NOT in the vocabulary!")
         print("--> SimpleTokenizerV1 fails on words that were absent from the training corpus.")
+
+    
+    all_tokens_v2 = all_tokens + ["<|unk|>", "<|endoftext|>"]
+    vocab_v2 = {token: integer for integer, token in enumerate(all_tokens_v2)}
+    tokenizer_v2 = SimpleTokenizerV2(vocab_v2)
+    print("\n============================================\n")
+    print("Vocabulary size v2:", len(vocab_v2))
+    
+    # Add a space before <|endoftext|> so regex splits it as a separate token from 'me'
+    sample_text_v2 = sample_text + " <|endoftext|>"
+    encoded_ids_v2 = tokenizer_v2.encode(sample_text_v2)
+    print("Encoded Token IDs (v2):\n", encoded_ids_v2)
+
+    decoded_text_v2 = tokenizer_v2.decode(encoded_ids_v2)
+    print("Decoded Text (v2):\n", decoded_text_v2)
+
+    # unseen text with tokenizer_v2
+    print("\n--- Case: Unseen Text (with tokenizer_v2) ---")
+    print("Unseen Input Text:", unseen_text)
+    encoded_ids_v2 = tokenizer_v2.encode(unseen_text)
+    print("\nEncoded Token IDs (v2):\n", encoded_ids_v2)
+    decoded_text_v2 = tokenizer_v2.decode(encoded_ids_v2)
+    print("Decoded Text (v2):\n", decoded_text_v2)
+    
+    
+    
