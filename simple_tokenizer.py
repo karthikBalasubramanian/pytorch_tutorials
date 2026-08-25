@@ -2,6 +2,8 @@ from typing_extensions import Dict
 import os
 import re
 import urllib.request
+import tiktoken
+
 
 
 class SimpleTokenizerV1:
@@ -110,6 +112,22 @@ if __name__ == "__main__":
     print("\nEncoded Token IDs (v2):\n", encoded_ids_v2)
     decoded_text_v2 = tokenizer_v2.decode(encoded_ids_v2)
     print("Decoded Text (v2):\n", decoded_text_v2)
+
+    # BPE Tokenizer Example using OpenAI's tiktoken (GPT-2 vocabulary)
+    print("\n============================================\n")
+    print("--- BPE Tokenizer Example (tiktoken gpt2) ---")
+    tokenizer_bpe = tiktoken.get_encoding("gpt2")
     
+    text_bpe = (
+        "Hello, do you like tea? <|endoftext|> In the sunlit terraces "
+        "of someunknownPlace."
+    )
     
+    # Pass allowed_special={"<|endoftext|>"} to permit encoding the special token
+    integers = tokenizer_bpe.encode(text_bpe, allowed_special={"<|endoftext|>"})
+    print("Encoded Token IDs (tiktoken):\n", integers)
+    print(f"Max Token ID in gpt2 vocab: {tokenizer_bpe.max_token_value}")
+    print("--> ID 50256 corresponds to <|endoftext|> (index 50256 in 50,257 total vocab)")
     
+    decoded_bpe = tokenizer_bpe.decode(integers)
+    print("\nDecoded Text (tiktoken):\n", decoded_bpe)
