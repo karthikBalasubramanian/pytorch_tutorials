@@ -70,6 +70,22 @@ A word and punctuation tokenizer (`SimpleTokenizerV1`) built for Large Language 
 
 ---
 
+### 7. [`gpt_dataset_and_embeddings.py`](./gpt_dataset_and_embeddings.py)
+Implements an end-to-end dataset pipeline, token embedding, un-embedding/decoding, and positional embedding injection for GPT architectures:
+- **Autoregressive Dataset & DataLoader (`GPTDatasetV1`, `create_data_loader_v1`)**:
+  - Tokenizes raw text using BPE (`tiktoken` GPT-2 tokenizer).
+  - Uses sliding windows (`max_length` context chunks, `stride`) to construct shifted input-target training pairs `(input_ids, target_ids)` of shape `[batch_size, sequence_length]`.
+- **3D Token Embedding Lookup (`nn.Embedding`)**:
+  - Converts 2D token IDs `[batch_size, sequence_length]` into 3D feature tensors `[batch_size, sequence_length, embedding_dim]` (e.g. `[8, 4, 768]`).
+- **Un-embedding & Logit Projection**:
+  - Demonstrates un-embedding via matrix multiplication against the embedding table (`embedded_inputs @ weight.T`) to compute vocabulary logits `[batch_size, sequence_length, vocab_size]`.
+  - Extracts token IDs via `torch.argmax(dim=-1)` and decodes them back to string text sequences.
+- **Positional Embedding & Broadcasting Addition**:
+  - Explains why self-attention requires positional encoding (permutation invariance).
+  - Creates a positional embedding lookup table (`context_length` capacity = 256) and adds position vectors `[sequence_length, embedding_dim]` to token embeddings via PyTorch broadcasting to produce combined `input_embeddings` containing both semantic identity and word order.
+
+---
+
 ## 🚀 Execution Commands
 
 ```bash
@@ -90,4 +106,8 @@ python distributed_data_processing.py
 
 # Run simple LLM word & punctuation tokenizer
 python simple_tokenizer.py
+
+# Run GPT dataset loader, token embeddings, decoding & positional embeddings
+python gpt_dataset_and_embeddings.py
 ```
+
