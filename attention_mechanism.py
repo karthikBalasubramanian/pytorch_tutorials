@@ -1,0 +1,112 @@
+"""
+Attention Mechanism (Part 1: Simplified Dot-Product Attention without Weights)
+
+This script demonstrates basic self-attention using a simple 2D input tensor without trainable 
+weight parameters (W_Q, W_K, W_V). It illustrates raw dot-product similarity computation, 
+compares naive summation normalization against Softmax normalization, and computes final 
+context vectors.
+"""
+
+import torch
+import torch.nn.functional as F
+
+
+def simplified_attention_demo():
+    print("=" * 70)
+    print("PART 1: SIMPLIFIED DOT-PRODUCT ATTENTION (NO WEIGHT GRADIENTS)")
+    print("=" * 70)
+
+    # 1. Define a simple 2D tensor of inputs [seq_len, embedding_dim]
+    # Representing a sequence of 3 tokens, each with a 4-dimensional embedding vector
+    inputs = torch.tensor([
+        [0.43, 0.15, 0.89, 0.55],  # Token 1 (e.g., "Your")
+        [0.55, 0.87, 0.66, 0.23],  # Token 2 (e.g., "journey")
+        [0.57, 0.85, 0.08, 0.12]   # Token 3 (e.g., "starts")
+    ], dtype=torch.float32)
+
+    seq_len, embedding_dim = inputs.shape
+    print(f"\n1. Input Tensor (X): Shape [{seq_len}, {embedding_dim}]")
+    print(inputs)
+
+    # ----------------------------------------------------
+    # 2. Compute Raw Similarity Scores via Dot Product (Phase 1)
+    # ----------------------------------------------------
+    # Phase 1: Dot products between input vectors (X @ X.T)
+    # Measure directional similarity/alignment between query token x_i and key token x_j.
+    # Score a_ij = x_i . x_j  (Vector-Vector Dot Product -> scalar similarity score)
+    raw_scores = inputs @ inputs.T  # Shape: [seq_len, seq_len]
+
+    print(f"\n2. Raw Attention Scores (A = X @ X^T): Shape [{seq_len}, {seq_len}]")
+    print(raw_scores)
+    
+    # Detailed view for query token 2 (index 1)
+    query_idx = 1
+    query_vector = inputs[query_idx]
+    print(f"\n   Example for Token {query_idx + 1} (query vector = {query_vector}):")
+    for j in range(seq_len):
+        score = torch.dot(query_vector, inputs[j])
+        print(f"   - Dot product with Token {j + 1}: {score:.4f}")
+
+    # ----------------------------------------------------
+    # 3. Normalization: Naive Summation vs. Softmax
+    # ----------------------------------------------------
+    print("\n3. Normalization Comparison:")
+    
+    # Naive Summation Normalization (summing to 1 by simple division)
+    naive_sum_weights = raw_scores / raw_scores.sum(dim=-1, keepdim=True)
+    print("\n   a) Naive Summation Normalization (raw_scores / sum):")
+    print(naive_sum_weights)
+    print(f"      Row sums: {naive_sum_weights.sum(dim=-1)}")
+
+    # Softmax Normalization
+    softmax_weights = F.softmax(raw_scores, dim=-1)
+    print("\n   b) Softmax Normalization (torch.softmax):")
+    print(softmax_weights)
+    print(f"      Row sums: {softmax_weights.sum(dim=-1)}")
+
+    # Demonstration: Why Naive Summation Fails with Negative Similarity Scores
+    inputs_with_negatives = torch.tensor([
+        [ 1.0, -2.0,  0.5],
+        [-1.0,  1.5, -0.5],
+        [ 0.2,  0.1, -1.2]
+    ], dtype=torch.float32)
+    
+    raw_scores_neg = inputs_with_negatives @ inputs_with_negatives.T
+    print("\n   c) Edge Case Demo: Tensors with Negative Components")
+    print("      Raw Scores Matrix:")
+    print(raw_scores_neg)
+    
+    # Check naive sum issue:
+    naive_denom = raw_scores_neg.sum(dim=-1, keepdim=True)
+    print(f"      Naive Sum Denominators per row: {naive_denom.squeeze()}")
+    naive_weights_neg = raw_scores_neg / naive_denom
+    print("      Naive Weights (can contain negative values or division issues):")
+    print(naive_weights_neg)
+
+    softmax_weights_neg = F.softmax(raw_scores_neg, dim=-1)
+    print("      Softmax Weights (guaranteed valid probability distribution in [0, 1]):")
+    print(softmax_weights_neg)
+
+    # ----------------------------------------------------
+    # 4. Compute Context Vectors: Weighted Sum (Phase 2)
+    # ----------------------------------------------------
+    # Phase 2: Matrix multiplication of Attention Weights @ Input Vectors (W_attn @ X)
+    # Context vector z_i is a weighted sum (linear combination) of all input vectors:
+    # z_i = w_i1*x_1 + w_i2*x_2 + ... + w_iT*x_T  -->  Z = Softmax_Weights @ X
+    # Note: While '@' performs matrix multiplication (dot products along inner dimensions),
+    # conceptually this step uses the softmax probabilities to scale and blend input feature vectors!
+    context_vectors = softmax_weights @ inputs  # Shape: [seq_len, embedding_dim]
+
+    print(f"\n4. Output Context Vectors (Z = Attention_Weights @ X): Shape [{seq_len}, {embedding_dim}]")
+    print(context_vectors)
+
+    print("\nSummary of Shapes:")
+    print(f"- Inputs (X):            {list(inputs.shape)}")
+    print(f"- Raw Scores (X @ X^T):  {list(raw_scores.shape)}")
+    print(f"- Attention Weights (W): {list(softmax_weights.shape)}")
+    print(f"- Context Vectors (Z):   {list(context_vectors.shape)}")
+    print("=" * 70)
+
+
+if __name__ == "__main__":
+    simplified_attention_demo()

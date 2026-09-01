@@ -86,6 +86,39 @@ Implements an end-to-end dataset pipeline, token embedding, un-embedding/decodin
 
 ---
 
+### 8. [`attention_mechanism.py`](./attention_mechanism.py)
+Implements **Part 1: Simplified Dot-Product Attention** (without weight parameters/gradients) along with an in-depth conceptual writeup:
+
+#### 💡 Core Theoretical Concepts
+
+1. **What is Attention?**
+   - **Static vs. Contextual Embeddings**: Standard lookup tables (`nn.Embedding`) assign a single fixed vector representation to a token regardless of context (e.g., "bank" in "river bank" vs. "bank account"). Attention allows tokens to dynamically interact, query surrounding tokens, and aggregate contextual information into dynamic **context vectors**.
+   - **Mechanism**: Every token looks at all other tokens in a sequence, calculates relevance weights (how much to pay attention to each token), and computes a weighted average of token embeddings to update its own representation.
+
+2. **Why Dot Product?**
+   - **Geometric Similarity**: The dot product between two vectors $\mathbf{u} \cdot \mathbf{v} = \|\mathbf{u}\| \|\mathbf{v}\| \cos \theta$ measures their directional alignment in high-dimensional embedding space.
+     - Vectors pointing in similar directions yield high positive dot products.
+     - Orthogonal vectors yield zero dot product.
+     - Opposing vectors yield negative dot products.
+   - **Matrix Parallelism**: Pairwise dot products for an entire sequence $X \in \mathbb{R}^{T \times d}$ can be calculated simultaneously as a single matrix multiplication $A_{raw} = X X^T \in \mathbb{R}^{T \times T}$, leveraging fast GPU matrix multiplication (GEMM/BLAS).
+
+3. **What is Normalization?**
+   - Raw dot product scores are unconstrained real numbers $(-\infty, \infty)$ scaling with vector magnitude and dimension.
+   - Normalization converts raw scores into valid **probability distributions** (weights $\in [0, 1]$ summing to $1.0$ across each row).
+   - This ensures the resulting context vector $\mathbf{z}_i = \sum_{j} w_{ij} \mathbf{x}_j$ is a **convex combination** (weighted average) of input vectors, preserving the numerical scale of input features without numerical explosion.
+
+4. **Why Softmax Normalization vs. Naive Summation ($w_i = \frac{a_i}{\sum a}$)?**
+   - **Handling Negative Dot Products**: Dot products can be negative. Naive summation ($\frac{a_{ij}}{\sum_k a_{ik}}$) breaks severely:
+     - If the denominator sum is negative, weight signs invert.
+     - If the denominator sum is zero, division by zero occurs ($NaN$).
+     - Individual naive weights can become negative or greater than $1.0$.
+   - **Guaranteed Valid Probability Distribution**: Exponentiation ($\exp(x)$) maps all real numbers $(-\infty, \infty)$ strictly into positive real values $(0, \infty)$. Softmax guarantees $w_{ij} \in (0, 1)$ and $\sum_{j} w_{ij} = 1.0$.
+   - **Non-linear Sharpness / Focus**: $\exp(x)$ exponentially magnifies large dot-product differences, sharpening focus on highly relevant tokens while suppressing noise from less relevant ones.
+   - **Smooth Differentiability**: Softmax provides smooth, continuous gradients everywhere ($\frac{\partial s_i}{\partial a_j} = s_i (\delta_{ij} - s_j)$), ideal for backpropagation.
+   - **Numerical Stability**: Standard implementations compute $\exp(x_i - \max(x))$ to prevent exponential overflow.
+
+---
+
 ## 🚀 Execution Commands
 
 ```bash
@@ -109,5 +142,9 @@ python simple_tokenizer.py
 
 # Run GPT dataset loader, token embeddings, decoding & positional embeddings
 python gpt_dataset_and_embeddings.py
+
+# Run simplified dot-product self-attention without weights
+python attention_mechanism.py
 ```
+
 
