@@ -115,7 +115,12 @@ Implements **Part 1: Simplified Dot-Product Attention** (without weight paramete
    - **Guaranteed Valid Probability Distribution**: Exponentiation ($\exp(x)$) maps all real numbers $(-\infty, \infty)$ strictly into positive real values $(0, \infty)$. Softmax guarantees $w_{ij} \in (0, 1)$ and $\sum_{j} w_{ij} = 1.0$.
    - **Non-linear Sharpness / Focus**: $\exp(x)$ exponentially magnifies large dot-product differences, sharpening focus on highly relevant tokens while suppressing noise from less relevant ones.
    - **Smooth Differentiability**: Softmax provides smooth, continuous gradients everywhere ($\frac{\partial s_i}{\partial a_j} = s_i (\delta_{ij} - s_j)$), ideal for backpropagation.
-   - **Numerical Stability**: Standard implementations compute $\exp(x_i - \max(x))$ to prevent exponential overflow.
+5. **Self-Attention PyTorch Modules (`SelfAttention_v1` & `SelfAttention_v2`)**
+   - **`SelfAttention_v1`**: Implements trainable Query ($W_Q$), Key ($W_K$), and Value ($W_V$) weight matrices using manual `nn.Parameter(torch.rand(d_in, d_out))` parameters.
+   - **`SelfAttention_v2`**: Replaces manual `nn.Parameter` with PyTorch's built-in `nn.Linear(d_in, d_out, bias=False)`.
+     - **Automatic Initialization**: `nn.Linear` automatically applies proper weight initialization (Kaiming / Xavier uniform), avoiding gradient problems during early training.
+     - **Batch Safety**: Uses `keys.transpose(-2, -1)` to safely handle both 2D single sequences (`[seq_len, d_in]`) and 3D batched inputs (`[batch_size, seq_len, d_in]`).
+   - **Weight Transfer & Transpose Equivalence**: Demonstrates that PyTorch `nn.Linear` stores weight matrices in transposed format `(d_out, d_in)`. Transferring `sa_v2.W_query.weight.T` to `sa_v1.W_Q` proves that both implementations produce mathematically identical outputs (`torch.allclose(...) == True`).
 
 ---
 

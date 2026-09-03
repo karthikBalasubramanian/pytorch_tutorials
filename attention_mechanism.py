@@ -7,8 +7,11 @@ compares naive summation normalization against Softmax normalization, and comput
 context vectors.
 """
 
+import math
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
+
 
 
 def simplified_attention_demo():
@@ -108,5 +111,111 @@ def simplified_attention_demo():
     print("=" * 70)
 
 
+
+class SelfAttention_v1(nn.Module):
+    """
+    Self-Attention V1: Uses manual nn.Parameter weight matrices W_Q, W_K, W_V.
+    """
+    def __init__(self, d_in, d_out):
+        super().__init__()
+        self.d_in = d_in
+        self.d_out = d_out
+        self.W_Q = nn.Parameter(torch.rand(self.d_in, self.d_out))
+        self.W_K = nn.Parameter(torch.rand(self.d_in, self.d_out))
+        self.W_V = nn.Parameter(torch.rand(self.d_in, self.d_out))
+        
+    def forward(self, x):
+        Q = x @ self.W_Q
+        K = x @ self.W_K
+        V = x @ self.W_V
+        attn_scores = Q @ K.T
+        attn_weights = F.softmax(attn_scores / math.sqrt(self.d_out), dim=-1)
+        context_vector = attn_weights @ V
+        return context_vector
+
+
+class SelfAttention_v2(nn.Module):
+    """
+    Self-Attention V2: Uses PyTorch's nn.Linear for automatic weight initialization,
+    optional bias support, and transpose(-2, -1) for 2D & 3D batch safety.
+    """
+    def __init__(self, d_in, d_out, qkv_bias=False):
+        super().__init__()
+        self.d_out = d_out
+        # nn.Linear handles proper weight initialization (Kaiming / Xavier uniform)
+        self.W_query = nn.Linear(d_in, d_out, bias=qkv_bias)
+        self.W_key   = nn.Linear(d_in, d_out, bias=qkv_bias)
+        self.W_value = nn.Linear(d_in, d_out, bias=qkv_bias)
+
+    def forward(self, x):
+        queries = self.W_query(x)  # Shape: [..., seq_len, d_out]
+        keys    = self.W_key(x)    # Shape: [..., seq_len, d_out]
+        values  = self.W_value(x)  # Shape: [..., seq_len, d_out]
+
+        # transpose(-2, -1) swaps the last two dimensions safely for 2D and 3D batched inputs
+        attn_scores = queries @ keys.transpose(-2, -1)
+        attn_weights = torch.softmax(attn_scores / math.sqrt(self.d_out), dim=-1)
+        context_vectors = attn_weights @ values
+        return context_vectors
+
+
+def self_attention_class_demo():
+    print("\n" + "=" * 70)
+    print("PART 2: SELF-ATTENTION MODULES WITH TRAINABLE WEIGHTS (nn.Module)")
+    print("=" * 70)
+
+    # Sequence of 3 tokens, each with a 4-dimensional embedding vector
+    inputs = torch.tensor([
+        [0.43, 0.15, 0.89, 0.55],
+        [0.55, 0.87, 0.66, 0.23],
+        [0.57, 0.85, 0.08, 0.12]
+    ], dtype=torch.float32)
+
+    d_in = 4
+    d_out = 2
+
+    # Demo V1 (nn.Parameter)
+    torch.manual_seed(123)
+    sa_v1 = SelfAttention_v1(d_in, d_out)
+    context_v1 = sa_v1(inputs)
+    print(f"\n1. SelfAttention_v1 (nn.Parameter):")
+    print(f"   Input shape:   {list(inputs.shape)}")
+    print(f"   Output shape:  {list(context_v1.shape)}")
+    print(f"   Context vectors:\n{context_v1}")
+
+    # Demo V2 (nn.Linear)
+    torch.manual_seed(123)
+    sa_v2 = SelfAttention_v2(d_in, d_out)
+    context_v2 = sa_v2(inputs)
+    print(f"\n2. SelfAttention_v2 (nn.Linear):")
+    print(f"   Input shape:   {list(inputs.shape)}")
+    print(f"   Output shape:  {list(context_v2.shape)}")
+    print(f"   Context vectors:\n{context_v2}")
+
+    # 3D Batched Input Demo (Batch size 2, Sequence length 3, Embedding dim 4)
+    batch_inputs = torch.stack([inputs, inputs * 1.5])
+    context_batch = sa_v2(batch_inputs)
+    print(f"\n3. SelfAttention_v2 3D Batched Input Test:")
+    print(f"   Batch Input shape:  {list(batch_inputs.shape)}  [batch_size, seq_len, d_in]")
+    print(f"   Batch Output shape: {list(context_batch.shape)}  [batch_size, seq_len, d_out]")
+
+    # 4. Weight Transfer Verification (sa_v2 -> sa_v1)
+    # PyTorch nn.Linear stores weight matrix as (d_out, d_in).
+    # SelfAttention_v1 expects weight matrix as (d_in, d_out).
+    sa_v1.W_Q.data = sa_v2.W_query.weight.T.clone()
+    sa_v1.W_K.data = sa_v2.W_key.weight.T.clone()
+    sa_v1.W_V.data = sa_v2.W_value.weight.T.clone()
+
+    context_v1_transferred = sa_v1(inputs)
+    print(f"\n4. Weight Transfer Verification (sa_v2 -> sa_v1):")
+    print(f"   Transferred sa_v1 Context Vectors:\n{context_v1_transferred}")
+    print(f"   sa_v2 Context Vectors:\n{context_v2}")
+    print(f"   Are outputs identical? {torch.allclose(context_v1_transferred, context_v2)}")
+    print("=" * 70)
+
+
 if __name__ == "__main__":
     simplified_attention_demo()
+    self_attention_class_demo()
+
+
