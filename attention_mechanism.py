@@ -206,6 +206,22 @@ class CausalAttention(nn.Module):
         return context_vectors
 
 
+class MultiHeadAttentionWrapper(nn.Module):
+    def __init__(self, d_in, d_out, num_heads, context_length, dropout=0.0, qkv_bias=False):
+        super().__init__()
+
+        self.heads = nn.ModuleList(
+            [CausalAttention(d_in, d_out, context_length, dropout, qkv_bias) for _ in range(num_heads)]
+        )
+    
+    def forward(self, x):
+        # Concatenates context vectors from all num_heads along the feature dimension (dim=-1).
+        # Input shape:  [batch_size, seq_len, d_in]
+        # Output shape: [batch_size, seq_len, num_heads * d_out]
+        return torch.cat([head(x) for head in self.heads], dim=-1)
+
+
+
 def self_attention_class_demo():
     print("\n" + "=" * 70)
     print("PART 2: SELF-ATTENTION MODULES WITH TRAINABLE WEIGHTS (nn.Module)")
@@ -265,6 +281,23 @@ def self_attention_class_demo():
     print(f"   Batch Input shape:  {list(batch_inputs.shape)}  [batch_size, seq_len, d_in]")
     print(f"   Batch Output shape: {list(context_causal.shape)}  [batch_size, seq_len, d_out]")
     print(f"   Context vectors:\n{context_causal}")
+    print("=" * 70)
+
+    # 6. Multi Head Attention Wrapper
+    torch.manual_seed(123)
+    mha = MultiHeadAttentionWrapper(
+        d_in=4, 
+        d_out=2, 
+        num_heads=3, 
+        context_length=1024, 
+        dropout=0.0
+    )
+    context_mha = mha(batch_inputs)
+    print(f"\n6. MultiHeadAttentionWrapper:")
+    print(f"   Batch Input shape:  {list(batch_inputs.shape)}  [batch_size, seq_len, d_in]")
+    print(f"   Batch Output shape: {list(context_mha.shape)}  [batch_size, seq_len, num_heads * d_out]")
+
+    print(f"   Context vectors:\n{context_mha}")
     print("=" * 70)
 
 

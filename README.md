@@ -127,6 +127,10 @@ Implements **Part 1: Simplified Dot-Product Attention** (without weight paramete
    - **`masked_fill_(-inf)`**: Replaces future token scores (where mask == 1) with `-inf`. Exponentiation in Softmax converts `-inf` into **`0.0`** attention weight ($e^{-\infty} = 0.0$), preventing the model from looking ahead into future tokens.
    - **Attention Dropout**: Applies `nn.Dropout(p)` after Softmax to randomly drop attention connections during training, preventing over-reliance on specific token connections.
 
+7. **Multi-Head Attention Wrapper (`MultiHeadAttentionWrapper`)**
+   - **Parallel Attention Heads (`nn.ModuleList`)**: Wraps $N$ independent `CausalAttention` instances into a module list (`self.heads`).
+   - **Feature Concatenation (`torch.cat(..., dim=-1)`)**: Computes context vectors for each head independently and concatenates them along the feature dimension (`dim=-1`), expanding output representation capacity to $N \times d_{\text{out}}$.
+
 ---
 
 ## 🚀 Execution Commands
