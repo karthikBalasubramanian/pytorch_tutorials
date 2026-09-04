@@ -205,21 +205,108 @@ class CausalAttention(nn.Module):
         context_vectors = attn_weights @ values
         return context_vectors
 
-
 class MultiHeadAttentionWrapper(nn.Module):
+    """
+    Multi-Head Attention Wrapper (Sequential ModuleList Approach):
+    Instantiates N separate CausalAttention modules and concatenates their outputs along dim=-1.
+    Output shape: [batch_size, seq_len, num_heads * d_out]
+    """
     def __init__(self, d_in, d_out, num_heads, context_length, dropout=0.0, qkv_bias=False):
         super().__init__()
-
         self.heads = nn.ModuleList(
             [CausalAttention(d_in, d_out, context_length, dropout, qkv_bias) for _ in range(num_heads)]
         )
     
     def forward(self, x):
-        # Concatenates context vectors from all num_heads along the feature dimension (dim=-1).
+        # Concatenates context vectors from all num_heads along feature dimension (dim=-1)
         # Input shape:  [batch_size, seq_len, d_in]
         # Output shape: [batch_size, seq_len, num_heads * d_out]
         return torch.cat([head(x) for head in self.heads], dim=-1)
 
+
+class MultiHeadAttention(nn.Module):
+
+    """
+    Production Multi-Head Self-Attention Layer (Single-Projection & Tensor Reshaping Approach):
+
+    Contrast with MultiHeadAttentionWrapper:
+    ----------------------------------------
+    1. MultiHeadAttentionWrapper (Naive Sequential Approach):
+       - Uses nn.ModuleList to instantiate N separate CausalAttention instances.
+       - Runs N sequential loop iterations, launching 3*N separate linear layer GPU operations.
+       - Glues outputs together via torch.cat(..., dim=-1) without an output projection layer.
+
+    2. MultiHeadAttention (Production Transformer Approach):
+       - Uses 1 single linear projection for W_query, W_key, W_value of size d_out.
+       - Splits combined feature dimension d_out into num_heads * head_dim via .view().
+       - Transposes tensor shapes to [b, num_heads, num_tokens, head_dim].
+       - Computes scaled dot-product causal attention across ALL heads simultaneously in parallel.
+       - Reverts transpose via .transpose(1, 2) and makes tensor contiguous in memory.
+       - Merges heads via .view(b, num_tokens, d_out).
+       - Applies a final output projection layer self.out_proj (nn.Linear(d_out, d_out)) to mix
+         and blend feature outputs across all attention heads!
+    """
+    def __init__(self, d_in, d_out, context_length, dropout, num_heads, qkv_bias=False):
+        super().__init__()
+        assert d_out % num_heads == 0, "d_out must be divisible by num_heads"
+
+        self.d_out = d_out
+        self.num_heads = num_heads
+        self.head_dim = d_out // num_heads  # Per-head dimension
+
+        self.W_query = nn.Linear(d_in, d_out, bias=qkv_bias)
+        self.W_key   = nn.Linear(d_in, d_out, bias=qkv_bias)
+        self.W_value = nn.Linear(d_in, d_out, bias=qkv_bias)
+        self.out_proj = nn.Linear(d_out, d_out, bias=qkv_bias)  # Blends head outputs together
+        self.dropout = nn.Dropout(dropout)
+        
+        self.register_buffer(
+            "mask",
+            torch.triu(torch.ones(context_length, context_length), diagonal=1)
+        )
+
+    def forward(self, x):
+        b, num_tokens, d_in = x.shape
+
+        # Step 1: Single Linear Projection for Q, K, V -> [b, num_tokens, d_out]
+        keys    = self.W_key(x)
+        queries = self.W_query(x)
+        values  = self.W_value(x)
+
+        # Step 2: Unroll d_out into (num_heads, head_dim) -> [b, num_tokens, num_heads, head_dim]
+        keys    = keys.view(b, num_tokens, self.num_heads, self.head_dim)
+        queries = queries.view(b, num_tokens, self.num_heads, self.head_dim)
+        values  = values.view(b, num_tokens, self.num_heads, self.head_dim)
+
+        # Step 3: Transpose (1, 2) -> [b, num_heads, num_tokens, head_dim] for parallel GPU matrix multiplication
+        keys    = keys.transpose(1, 2)
+        queries = queries.transpose(1, 2)
+        values  = values.transpose(1, 2)
+
+        # Step 4: Scaled Dot-Product Attention: [b, num_heads, num_tokens, head_dim] @ [b, num_heads, head_dim, num_tokens] -> [b, num_heads, num_tokens, num_tokens]
+        attn_scores = queries @ keys.transpose(-2, -1)
+
+        # Step 5: Causal Masking (-inf on future positions)
+        causal_mask = self.mask.bool()[:num_tokens, :num_tokens]
+        attn_scores.masked_fill_(causal_mask, -torch.inf)
+
+        # Step 6: Softmax Normalization + Dropout
+        attn_weights = torch.softmax(attn_scores / math.sqrt(self.head_dim), dim=-1)
+        attn_weights = self.dropout(attn_weights)
+
+        # Step 7: Value Aggregation -> [b, num_heads, num_tokens, head_dim]
+        context_vec = attn_weights @ values
+
+        # Step 8: Revert Transpose (1, 2) -> [b, num_tokens, num_heads, head_dim]
+        context_vec = context_vec.transpose(1, 2)
+
+        # Step 9: Make contiguous & Merge heads back into d_out -> [b, num_tokens, d_out]
+        context_vec = context_vec.contiguous().view(b, num_tokens, self.d_out)
+
+        # Step 10: Final Output Projection (Mixes features across all heads via W_out [d_out, d_out])
+        context_vec = self.out_proj(context_vec)
+
+        return context_vec
 
 
 def self_attention_class_demo():
@@ -285,20 +372,36 @@ def self_attention_class_demo():
 
     # 6. Multi Head Attention Wrapper
     torch.manual_seed(123)
-    mha = MultiHeadAttentionWrapper(
+    mha_wrapper = MultiHeadAttentionWrapper(
         d_in=4, 
         d_out=2, 
-        num_heads=3, 
+        num_heads=2, 
         context_length=1024, 
         dropout=0.0
     )
-    context_mha = mha(batch_inputs)
-    print(f"\n6. MultiHeadAttentionWrapper:")
+    context_mha_wrapper = mha_wrapper(batch_inputs)
+    print(f"\n6. MultiHeadAttentionWrapper (Sequential ModuleList approach):")
     print(f"   Batch Input shape:  {list(batch_inputs.shape)}  [batch_size, seq_len, d_in]")
-    print(f"   Batch Output shape: {list(context_mha.shape)}  [batch_size, seq_len, num_heads * d_out]")
-
-    print(f"   Context vectors:\n{context_mha}")
+    print(f"   Batch Output shape: {list(context_mha_wrapper.shape)}  [batch_size, seq_len, num_heads * d_out]")
+    print(f"   Context vectors:\n{context_mha_wrapper}")
     print("=" * 70)
+
+    # 7. Production MultiHeadAttention (Single Linear Projection & Output Projection)
+    torch.manual_seed(123)
+    mha_prod = MultiHeadAttention(
+        d_in=4, 
+        d_out=2, 
+        num_heads=2, 
+        context_length=1024, 
+        dropout=0.0
+    )
+    context_mha_prod = mha_prod(batch_inputs)
+    print(f"\n7. MultiHeadAttention (Production Single-Projection + out_proj approach):")
+    print(f"   Batch Input shape:  {list(batch_inputs.shape)}  [batch_size, seq_len, d_in]")
+    print(f"   Batch Output shape: {list(context_mha_prod.shape)}  [batch_size, seq_len, d_out]")
+    print(f"   Context vectors:\n{context_mha_prod}")
+    print("=" * 70)
+
 
 
 if __name__ == "__main__":
