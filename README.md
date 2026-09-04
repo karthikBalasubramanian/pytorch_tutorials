@@ -131,6 +131,12 @@ Implements **Part 1: Simplified Dot-Product Attention** (without weight paramete
    - **Parallel Attention Heads (`nn.ModuleList`)**: Wraps $N$ independent `CausalAttention` instances into a module list (`self.heads`).
    - **Feature Concatenation (`torch.cat(..., dim=-1)`)**: Computes context vectors for each head independently and concatenates them along the feature dimension (`dim=-1`), expanding output representation capacity to $N \times d_{\text{out}}$.
 
+8. **Production Multi-Head Attention (`MultiHeadAttention`)**
+   - **Single Linear Projections**: Uses 1 single linear projection for $W_Q, W_K, W_V$ of size $d_{\text{out}}$, splitting into `(num_heads, head_dim)` via `.view(b, num_tokens, num_heads, head_dim)`.
+   - **Parallel GPU Matrix Multiplication**: Transposes to `[b, num_heads, num_tokens, head_dim]` to compute scaled dot-product causal attention across all heads simultaneously.
+   - **Contiguous Memory & Head Merging**: Reverts transpose, applies `.contiguous().view(b, num_tokens, d_out)` to merge heads back into $d_{\text{out}}$.
+   - **Output Projection Layer (`self.out_proj`)**: Applies `nn.Linear(d_out, d_out)` (`W_out`) to mix and blend features across all attention heads.
+
 ---
 
 ## 🚀 Execution Commands
