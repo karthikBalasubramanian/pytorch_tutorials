@@ -158,6 +158,53 @@ class SelfAttention_v2(nn.Module):
         context_vectors = attn_weights @ values
         return context_vectors
 
+class CausalAttention(nn.Module):
+    """
+    Causal Self-Attention: Restricts tokens to only attend to past and current tokens
+    by applying an upper-triangular mask (torch.triu with diagonal=1) filled with -inf.
+    """
+    def __init__(self, d_in, d_out, context_length, dropout=0.0, qkv_bias=False):
+        super().__init__()
+        self.d_out = d_out
+        self.W_query = nn.Linear(d_in, d_out, bias=qkv_bias)
+        self.W_key   = nn.Linear(d_in, d_out, bias=qkv_bias)
+        self.W_value = nn.Linear(d_in, d_out, bias=qkv_bias)
+        self.dropout = nn.Dropout(dropout)
+        # torch.triu with diagonal=1 has 1s on future positions (above main diagonal)
+        # register_buffer ensures mask moves to GPU/MPS automatically with model.to(device)
+        self.register_buffer(
+            "mask", 
+            torch.triu(torch.ones(context_length, context_length), diagonal=1)
+        )
+
+    def forward(self, x):
+        b, num_tokens, d_in = x.shape  # Handles 3D batched inputs [batch_size, seq_len, d_in]
+        queries = self.W_query(x)      # [b, num_tokens, d_out]
+        keys    = self.W_key(x)        # [b, num_tokens, d_out]
+        values  = self.W_value(x)      # [b, num_tokens, d_out]
+
+        # 1. Compute raw scores: [b, num_tokens, d_out] @ [b, d_out, num_tokens] -> [b, num_tokens, num_tokens]
+        attn_scores = queries @ keys.transpose(-2, -1)
+
+        # 2. Apply Causal Mask: Replace future token scores (where mask == 1) with -inf
+        causal_mask = self.mask.bool()[:num_tokens, :num_tokens]
+        attn_scores.masked_fill_(causal_mask, -torch.inf)
+
+
+        # 3. Softmax Normalization (exp(-inf) = 0.0, future weights become 0%)
+        attn_weights = torch.softmax(attn_scores / math.sqrt(self.d_out), dim=-1)
+
+        # 4. Apply Dropout to attention weights
+        # Note: PyTorch's Inverted Dropout scales remaining non-zero weights by 1/(1-p) automatically,
+        # preserving an expected sum of 1.0. No re-normalization is performed after dropout (running Softmax
+        # again would turn dropped 0s back into exp(0)=1.0, destroying the dropout mask).
+        attn_weights = self.dropout(attn_weights)
+
+
+        # 5. Compute Context Vectors: [b, num_tokens, num_tokens] @ [b, num_tokens, d_out] -> [b, num_tokens, d_out]
+        context_vectors = attn_weights @ values
+        return context_vectors
+
 
 def self_attention_class_demo():
     print("\n" + "=" * 70)
@@ -210,12 +257,20 @@ def self_attention_class_demo():
     print(f"\n4. Weight Transfer Verification (sa_v2 -> sa_v1):")
     print(f"   Transferred sa_v1 Context Vectors:\n{context_v1_transferred}")
     print(f"   sa_v2 Context Vectors:\n{context_v2}")
-    print(f"   Are outputs identical? {torch.allclose(context_v1_transferred, context_v2)}")
+    # 5. CausalAttention Demo
+    torch.manual_seed(123)
+    causal_attn = CausalAttention(d_in=4, d_out=2, context_length=1024, dropout=0.0)
+    context_causal = causal_attn(batch_inputs)
+    print(f"\n5. CausalAttention (Masked Causal Self-Attention):")
+    print(f"   Batch Input shape:  {list(batch_inputs.shape)}  [batch_size, seq_len, d_in]")
+    print(f"   Batch Output shape: {list(context_causal.shape)}  [batch_size, seq_len, d_out]")
+    print(f"   Context vectors:\n{context_causal}")
     print("=" * 70)
 
 
 if __name__ == "__main__":
     simplified_attention_demo()
     self_attention_class_demo()
+
 
 

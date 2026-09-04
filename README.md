@@ -122,6 +122,11 @@ Implements **Part 1: Simplified Dot-Product Attention** (without weight paramete
      - **Batch Safety**: Uses `keys.transpose(-2, -1)` to safely handle both 2D single sequences (`[seq_len, d_in]`) and 3D batched inputs (`[batch_size, seq_len, d_in]`).
    - **Weight Transfer & Transpose Equivalence**: Demonstrates that PyTorch `nn.Linear` stores weight matrices in transposed format `(d_out, d_in)`. Transferring `sa_v2.W_query.weight.T` to `sa_v1.W_Q` proves that both implementations produce mathematically identical outputs (`torch.allclose(...) == True`).
 
+6. **Causal Masked Self-Attention (`CausalAttention`)**
+   - **Autoregressive Masking**: Uses `torch.triu(torch.ones(context_length, context_length), diagonal=1)` registered as a non-trainable GPU-persistent buffer (`register_buffer`).
+   - **`masked_fill_(-inf)`**: Replaces future token scores (where mask == 1) with `-inf`. Exponentiation in Softmax converts `-inf` into **`0.0`** attention weight ($e^{-\infty} = 0.0$), preventing the model from looking ahead into future tokens.
+   - **Attention Dropout**: Applies `nn.Dropout(p)` after Softmax to randomly drop attention connections during training, preventing over-reliance on specific token connections.
+
 ---
 
 ## 🚀 Execution Commands
