@@ -139,6 +139,40 @@ Implements **Part 1: Simplified Dot-Product Attention** (without weight paramete
 
 ---
 
+### 9. [`gpt_model.py`](./gpt_model.py)
+Implements the complete GPT-2 124M architecture (`GPTModel`, `LayerNorm`, `FeedForward` MLP, `TransformerBlock`, `MultiHeadAttention`), detailing the separation of concerns, weight tying, parameter allocation, and memory requirements:
+
+#### 🧠 Architecture Roles: "The Learners" vs. "The Infrastructure"
+
+1. **Team 1: The "Learners" (Computation & Knowledge Storage)**
+   - **`MultiHeadAttention`**: Learns contextual relationships across tokens in the sequence (information mixing across token positions).
+   - **`FeedForward` (MLP)**: Position-wise 2-layer neural network (`Linear` $\rightarrow$ `GELU` $\rightarrow$ `Linear`).
+     - **Expansion ($768 \rightarrow 3072$, $4\times$)**: Projects feature dimensions into higher-dimensional space where non-linear patterns are easier to separate (Cover's Theorem) and acts as a key-value memory bank for factual knowledge.
+     - **Compression ($3072 \rightarrow 768$, $4\times$)**: Distills high-dimensional computation back down to `emb_dim` so output shapes match for residual addition.
+
+2. **Team 2: The "Infrastructure" (Numerical Stability & Gradient Flow)**
+   - **`LayerNorm`**: Normalizes feature activations to mean = 0.0 and variance = 1.0 per token across `emb_dim`.
+     - Prevents exploding or vanishing activations across deep networks (12–96 layers).
+     - Includes learnable `scale` (gain, initialized to 1.0) and `shift` (bias, initialized to 0.0) parameters per feature, allowing the model to adapt feature magnitude and offset if strict mean=0 / var=1 normalization needs tuning during training.
+   - **`nn.GELU(approximate="tanh")`**: Smooth, non-linear activation function.
+     - Keeps positive values intact ($x \rightarrow x$), smoothly dips small negative inputs ($[-1.5, 0]$ down to $\approx -0.17$), and dampens large negative values ($x < -2.0 \rightarrow 0$).
+     - Avoids hard zeros and dead neurons (unlike ReLU), maintaining continuous gradient flow.
+   - **`nn.Dropout` (`drop_layer`)**: Regularizes raw combined token + position embeddings right before entering the Transformer blocks, preventing overfitting to static lookup tables.
+   - **Residual Connections (`x = x + sublayer(x)`)**: Creates an uninterrupted "gradient superhighway" back to early layers during backpropagation, eliminating vanishing gradients.
+
+#### 📊 Parameter Accounting & Weight Tying
+- **Weight Tying (`out_head_layer.weight = tok_emb_layer.weight`)**:
+  - Links the output LM head matrix to the input token embedding matrix in memory (Press & Wolf 2017).
+  - Eliminates one duplicate copy of the $50,257 \times 768$ embedding table, reducing total model parameters from **163,000,320** (untied) down to **124,402,944** ($\approx 124\text{M}$ tied).
+- **Module Capacity Ratio**:
+  - Each `FeedForward` block contains **4,722,432 parameters**, which is **exactly $2.00\times$** the capacity of a `MultiHeadAttention` block (**2,359,296 parameters**).
+- **Memory Footprint (`float32` = 4 bytes per parameter)**:
+  - Untied Model (163M params): **621.80 MB** (0.61 GB).
+  - Tied Model (124M params): **474.56 MB** (0.46 GB).
+
+---
+
+
 ## 🚀 Execution Commands
 
 ```bash
@@ -165,6 +199,10 @@ python gpt_dataset_and_embeddings.py
 
 # Run simplified dot-product self-attention without weights
 python attention_mechanism.py
+
+# Run GPT model architecture & LayerNorm verification
+python gpt_model.py
 ```
+
 
 
