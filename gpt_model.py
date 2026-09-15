@@ -151,31 +151,41 @@ class GPTModel(nn.Module):
         x = self.drop_layer(x)
         x = self.transformer_blocks(x)
 
-        # 1. Capture stats BEFORE LayerNorm
-        mean_before = x.mean(dim=-1, keepdim=True)
-        var_before = x.var(dim=-1, keepdim=True, unbiased=False)
-
-        # 2. Apply LayerNorm
+        # Apply LayerNorm
         x = self.final_norm_layer(x)
 
-        # 3. Capture stats AFTER LayerNorm
-        mean_after = x.mean(dim=-1, keepdim=True)
-        var_after = x.var(dim=-1, keepdim=True, unbiased=False)
-
-        # 4. Clean Comparison Print
-        torch.set_printoptions(sci_mode=False, precision=4)
-        print("\n--- LayerNorm Verification ---")
-        print(f"Mean BEFORE LayerNorm (token 0): {mean_before[0, 0].item():.4f}")
-        print(f"Var  BEFORE LayerNorm (token 0): {var_before[0, 0].item():.4f}")
-        print(f"Mean AFTER  LayerNorm (token 0): {mean_after[0, 0].item():.4f}")
-        print(f"Var  AFTER  LayerNorm (token 0): {var_after[0, 0].item():.4f}\n")
-        torch.set_printoptions(sci_mode=None)
+        # (Optional) LayerNorm Verification stats
+        # mean_before = x.mean(dim=-1, keepdim=True)
+        # var_before = x.var(dim=-1, keepdim=True, unbiased=False)
+        # mean_after = x.mean(dim=-1, keepdim=True)
+        # var_after = x.var(dim=-1, keepdim=True, unbiased=False)
+        # torch.set_printoptions(sci_mode=False, precision=4)
+        # print("\n--- LayerNorm Verification ---")
+        # print(f"Mean BEFORE LayerNorm (token 0): {mean_before[0, 0].item():.4f}")
+        # print(f"Var  BEFORE LayerNorm (token 0): {var_before[0, 0].item():.4f}")
+        # print(f"Mean AFTER  LayerNorm (token 0): {mean_after[0, 0].item():.4f}")
+        # print(f"Var  AFTER  LayerNorm (token 0): {var_after[0, 0].item():.4f}\n")
+        # torch.set_printoptions(sci_mode=None)
 
         logits = self.out_head_layer(x)
         return logits
 
 
 
+
+def generate_text_simple(model, idx,
+                         max_new_tokens, context_size): 
+    for _ in range(max_new_tokens):
+        idx_cond = idx[:, -context_size:]
+        with torch.no_grad():
+            logits = model(idx_cond)
+
+        logits = logits[:, -1, :]
+        probas = torch.softmax(logits, dim=-1)
+        idx_next = torch.argmax(probas, dim=-1, keepdim=True)
+        idx = torch.cat((idx, idx_next), dim=1)
+
+    return idx
 
 
 
@@ -255,4 +265,32 @@ if __name__ == "__main__":
     print("=" * 60 + "\n")
 
 
+    # -------------------------------------------------------------------------
+    # 4. Text Generation (Autoregressive Decoding)
+    # -------------------------------------------------------------------------
+    print("=" * 60)
+    print("4. TEXT GENERATION (AUTOREGRESSIVE DECODING)")
+    print("=" * 60)
+
+    # Set generation parameters
+    prompt = "Hello! I am"
+    max_new_tokens = 6
+    context_size = model_config["context_length"]
+    # Tokenize the prompt
+    ids = tokenizer.encode(prompt)
+    idx = torch.tensor(ids, dtype=torch.long).unsqueeze(0)  # Add batch dimension
+    print("Prompt:", prompt)
+    print("Tokenized prompt:", ids)
+    print("Input shape:", idx.shape)
+    print("============================================================\n")
+    # Generate text
+    with torch.no_grad():
+        generated_ids = generate_text_simple(model, idx, max_new_tokens, context_size)
+
+    # Decode the generated sequence
+    generated_text = tokenizer.decode(generated_ids[0].tolist())
+    print("Generated sequence:", generated_ids)
+    print(f"Generated text: {generated_text}")
+    print(f"\nTotal generated tokens: {generated_ids.shape[1] - idx.shape[1]}")
+    print("=" * 60 + "\n")
 
